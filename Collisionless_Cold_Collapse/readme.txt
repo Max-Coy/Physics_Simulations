@@ -1,1 +1,1 @@
-Simple code written in C simulating cold collapse of a collisionless isothermal cloud of particles. Outputs are saved to csv files, analysis carried out in attached jupyter notebook file.
+Simple code written in C simulating cold collapse of a collisionless isothermal cloud of particles. Outputs are saved to csv files, as the saving notation is a bit wonky, there is an attached jupyter notebook file which shows an example of reading the relevant data and creating plots
