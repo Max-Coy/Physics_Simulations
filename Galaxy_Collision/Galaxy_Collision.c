@@ -85,7 +85,7 @@ void scale_values(int, int, double, double [][3]);
 int main(void)
 {
     double n1 = 1024, n2 = 512, n3 = 512; /*Respective particle counts for each cluster*/
-    printf("a");
+
     /*Ensuring that total particle count stays within allowed limits*/
     if (n1 + n2 > NMAX)
     {
@@ -125,15 +125,10 @@ int main(void)
     double vShift3[3] = {-0.15, 0.3, 0};
     shift_values(n3, 0, xShift3, x); 
     shift_values(n3,0,vShift3, v);
-
     
     int ntot = n1 + n2 + n3;
     calc_energy(&Energy_initial, ntot, m, x, v, eps2, &r_v);
     calc_force(ntot, m, x, a, eps2);
-
-    /*Setting up output file for data*/
-    FILE *stream;
-    stream = fopen("sanity.csv", "w");
 
     /*Stepping through sim*/
     double index = 0.;
@@ -141,23 +136,9 @@ int main(void)
       /*Integration*/
       leap_frog(ntot, m, x, v, a, dt, eps2);
 
-      /*Outputing Current State to file*/
-      for(int i = 0; i < ntot; i++)
-      {
-         /*For convenience, only saving position variables*/
-         fprintf(stream, "%1.12f %1.12f %1.12f,", x[i][0], x[i][1], x[i][2]);
-      }
-      calc_energy(&Energy, ntot, m, x, v, eps2, &r_v);
-      fprintf(stream,"%1.12f %1.12f\n",Energy,r_v);
-
       /*Advancing time*/
       index += 1;
     }while(index*dt < T);
-
-    /*Outputting some final descriptive variables*/
-    fprintf(stream,"%1.12f, %1.12f, %1.12f, %1.12f, %1.12f, %1.12f", Energy_initial, 
-            Energy, dt, index, eps2, T);
-    fclose(stream);
 
     return 0;
 }
