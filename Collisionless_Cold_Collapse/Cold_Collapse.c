@@ -75,13 +75,8 @@ int main(void){
    /*Finding Initial Energy to be used for stability analysis*/
    calc_energy(&e_init, n, m, x, v, eps2, &r_v);/*Technically could do this in m_s_df*/
    
-   
    /*Setting Initial Accelerations of particles*/
    calc_force(n, m, x, a, eps2);
-
-   /*Setting up output file to save data*/
-   FILE *stream;
-   stream = fopen("Cloud_Collapse_dt5.csv","w");
 
    /*Stepping through Simulation*/
    double index = 0.;
@@ -89,25 +84,13 @@ int main(void){
       /*Integration*/
       leap_frog(n, m, x, v, a, dt, eps2);
 
-      /*Outputing Current State to file*/
-      for(int i = 0; i < n; i++)
-      {
-         /*For convenience, only saving position variables*/
-         fprintf(stream, "%1.12f %1.12f %1.12f,", x[i][0], x[i][1], x[i][2]);
-      }
       calc_energy(&e,n, m, x, v, eps2, &r_v);
       
-      fprintf(stream,"%1.12f %1.12f\n", e, r_v); /*Adding energy / virial ratio of step*/
-
       /*Advancing time*/
       index += 1;
    }while(index*dt < T);
    
    calc_energy(&e,n, m, x, v, eps2, &r_v);
-   
-   /*Adding some final calculations / identifying variables to output file */
-   fprintf(stream,"%1.12f, %1.12f, %1.12f, %1.12f, %1.12f, %1.12f", e_init, e, dt, index, eps2, T);
-   fclose(stream); /*Closing output file*/
    
    return 0;
 }
