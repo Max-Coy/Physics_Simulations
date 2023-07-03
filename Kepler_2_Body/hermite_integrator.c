@@ -1,141 +1,15 @@
-/*4th order Hermite Integrator for N body problem
-main() function simulates simple 2 body kepler problem 
+/*hermite_integrator.c
+Max Coy, 7/23
+4th order (PEC)^n Hermite Integrator for N body gravitational problem 
+Can be set to use variable timesets of integer powers of 2, or use a prespecified fixed timestep
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-
-#define NMAX 256 /*Set small because this particular code is only doing small preliminary testing*/
-#define sqr(x) ((x) * (x))
-
-#define G 1
-#define PI 3.14159
-
-
-/*Purpose: Calculate Current Energy of the system
-Inputs: energy, number of particles, mass array, position array,
-velocity array, epsilon^2, virial ratio
-*/
-void calc_energy(double *, int, double[], double[][3], double[][3], double, double *);
-
-
-/*Individual timestep scheme hermite integrator, returns the minimum particle time after integration
-Inputs: number of particles, mass arry, position array, velocity array, acceleration array,
-jerk array, snap array, crackle array, timestep array, time array, softening parameter, 
-accuracy parameter eta, minimum time (for output), fix_dt (inputting 0 means variable timestep is used)
-*/
-void its_hermite_integrator(int, double [], double [][3], double [][3], double [][3], 
-                            double [][3], double [][3], double [][3], double [], double [], 
-                            double, double, double *, int);
-
-/*Function to be called prior to first call of its_hermite_integrator, sets initial t, dt, acceleration, and jerk values
-Inputs: number of particles, mass arry, position array, velocity array, acceleration array,
-jerk array, timestep array, time array, softening parameter, initial accuracy parameter eta_s, 
-minimum allowed timestep, maximum allowed timestep, fixed_timestep (entering nonzero value will
-set all dt values to this instead of doing calculation)
-Note: Integrator does not impose restrictions on allowed timesteps so the timestep range is only for initialization
-*/
-void initialize_parameters(int, double [], double [][3], double [][3], double [][3], 
-                            double [][3], double [][3], double [][3], double [], double [], 
-                            double, double, int, int, double);
-
-/*Finds specified time and outputs particle data at that point (right now just position and velocity)
-Inputs: position output array, velocity output array, specified time, number of particles, position array, 
-velocity array,  acceleration array, jerk array, snap array, crackle array, time array
-WARNING: Onus is on user to make sure output_time is reasonable,
-*/
-void its_output(double [][3], double [][3], double, int, double [][3], double [][3], 
-                double [][3], double [][3], double [][3], double [][3], double []);
-
-/*Going to write a simple 2-body kepler problem in order to run preliminary analysis on stablity of 
-integrator as well as ensure that things are working properly, as it won't be the meat of what's running
-i'm not going to bother with small optimizations like avoiding divisions and such*/
-int main(void)
-{
-    /*Initializing parameters*/
-    double ms = 1e7, mp = 1e4; /*Mass of sun and planet respectively*/
-    double sep = 20; /*initial separation of objects*/
-    double rel_COM = sep*mp / (ms + mp); /*Finding relative center of mass bewteen objects (assuming sun is at [0,0] )*/
-    /*Setting initial x-y coordinates of planet and sun so that center of mass is at [0,0]*/
-    double rs[3] = {-rel_COM, 0, 0}; /*including z-coordinate so that dimensions match up with what code expects*/
-    double rp[3] = {sep - rel_COM, 0, 0}; 
-
-    /*Finding sufficient angular velocity for objects to ensure orbiting motion*/
-    double eps2 = pow(2,-10); /*Potential softening parameter*/
-    double fg = G * ms * mp / (sqr(sep) + eps2); /*Force of gravity acting between objects*/
-    double mu = (ms*mp) / (ms + mp); /*reduced mass*/
-    double omega = sqrt(fg / (mu * rp[0])); /*angular velocity (calculated around point of rotation and so rp instead of sep is used)*/
-    
-    /*Converting angular velocity to initial velocities*/
-    double vs[3] = {-rs[1] * omega, rs[0] * omega, 0}; /*velocity of sun */
-    double vp[3] = {-rp[1] * omega, rp[0] * omega, 0}; /*velocity of planet */
-
-    /*Determining period of orbit*/
-    double period = sqrt(4 * sqr(PI) * pow((sep * 0.5),3) / (G * (ms+mp) )  );
-    
-    /*Converting parameters into format the integrator can use*/
-    double x[NMAX][3], v[NMAX][3], a[NMAX][3], j[NMAX][3], s[NMAX][3], c[NMAX][3]; /*Position and its derivatives*/
-    double output_x[NMAX][3], output_v[NMAX][3]; /*Temp arrays to be used for outputs*/
-    double eta = 0.005, eta_s = 0.001; /*Control accuracy / timestep size */
-    int n = 2; /*number of particles*/
-    double m[2] = {ms, mp}; /*particle mass array*/
-    for(int i = 0; i < 3; i++) /*Setting initial position and velocity to previously calculated values*/
-    {
-        x[0][i] = rs[i];
-        x[1][i] = rp[i];
-        v[0][i] = vs[i];
-        v[1][i] = vp[i];
-    }
-    double t[NMAX], dt[NMAX]; /*arrays to hold particle times and timesteps respectively*/
-    double energy, energy0, r_v, t_min;
-    double Time = 30 * period * 2.84423; /*Total time to be integrated (period seems to be off by a factor so I'm empirically adjusting it)*/
-    t_min = 0.0;
-    double index = 0.0;
-    double resolution = pow(2,-12); /*we might have timesteps larger than this, will have to check*/
-
-    double ts = pow(2,-16);
-
-    calc_energy(&energy0, n, m, x, v, eps2, &r_v);
-
-    initialize_parameters(n, m, x, v, a, j, s, c, dt, t, eps2, eta_s, 4, 16, 0.0);
-
-    /*Outputting initial state*/
-    FILE *stream;
-    stream = fopen("hermite.csv", "w");
-
-    for(int i = 0; i < n; i++)
-    {
-        fprintf(stream, "%1.12f %1.12f %1.12f ", x[i][0], x[i][1], x[i][2]);
-        fprintf(stream, "%1.12f %1.12f %1.12f,", v[i][0], v[i][1], v[i][2]);
-    }
-    fprintf(stream, "%1.12f %1.12f\n",energy0,r_v);
-
-    do
-    {
-        its_hermite_integrator(n, m, x, v, a, j, s, c, dt, t, eps2, eta, &t_min, 0);
-        if(t_min > index * resolution)
-        {
-            its_output(output_x, output_v, index*resolution, n, x, v, a, j, s, c, t);
-            calc_energy(&energy, n, m, output_x, output_v, eps2, &r_v);
-            for(int i = 0; i < n; i++)
-            {
-                fprintf(stream, "%1.12f %1.12f %1.12f ", output_x[i][0], output_x[i][1], output_x[i][2]);
-                fprintf(stream, "%1.12f %1.12f %1.12f,", output_v[i][0], output_v[i][1], output_v[i][2]);
-            }
-            fprintf(stream, "%1.16f %1.12f\n",energy,r_v);
-            index++;
-        }
-    }while(index * resolution < Time);
-
-
-    return 0;
-}
 
 /*Individual timestep scheme hermite integrator
 Inputs: number of particles, mass arry, position array, velocity array, acceleration array,
 jerk array, snap array, crackle array, timestep array, time array, softening parameter, 
-accuracy parameter eta, minimum time (for output)
+accuracy parameter eta, minimum time (for output), integer specifying whether or not to fix
+the timestep
 */
 void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], double a[][3],
                         double j[][3], double s[][3], double c[][3], double dt[], double t[], 
@@ -166,13 +40,12 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
     /*Predicting positions / velocities of all particles at global time*/
     double x_pred [NMAX][3], v_pred [NMAX][3]; /*Arrays to hold temporary data*/
     double t_factor, t_factor2, t_factor3; /*Temporary variables to save computational time*/
-    double inv3 = 1.0/3.0;
     for(int i = 0; i < n; i++)
     {
         /*Predefining prefactors to reduce computations*/
         t_factor = global_time - t[i]; /* delta t */
         t_factor2 = sqr(t_factor) * 0.5; /* delta t^2 / 2 */
-        t_factor3 = t_factor * t_factor2 * inv3; /* delta t^3 / 6 */
+        t_factor3 = t_factor * t_factor2 * k_3_inv; /* delta t^3 / 6 */
 
         for(int k = 0; k < 3; k++) /* j is already being used for jerk array */
         {
@@ -180,6 +53,15 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
             v_pred[i][k] = t_factor2*j[i][k] + t_factor*a[i][k] + v[i][k];
         }
     }
+    // printf("\nPredicted X/V:\n");
+    // for(int i = 0; i < n; i++)
+    // {
+    //     printf("  Particle: %1.0d\n",i+1);
+    //     printf("\tX:\n");
+    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",x_pred[i][0], x_pred[i][1], x_pred[i][2]);
+    //     printf("\tV:\n");
+    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",v_pred[i][0], v_pred[i][1], v_pred[i][2]);
+    // }
 
     
      /*Setting array values for acceleration and jerk for all degenerate particles to 0 and storing them in temporary variables*/
@@ -200,7 +82,8 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
     
     /*Finding new acceleration and jerk for degenerate particles*/
     double dr[3], dv[3];
-    double vDotR, R, rInv, rInv3, rInv5;
+    double vDotR, R2, rInv, rInv2, rInv3, vDr_3rInv5;
+    double mk_rInv3, v5, mk_vDr_3rInv5;
 
     for(int i = 0; i < indexes; i++)
     {
@@ -211,6 +94,10 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
             {
                 continue; /*Skipping this iteration as it's looking at self-interaction*/
             }
+            // else if(m[k] == 0.0)
+            // {
+            //     continue; /*skipping any test particles*/
+            // }
             vDotR = 0.0;
             /*Finding displacements*/
             for(int l = 0; l < 3; l++)
@@ -220,29 +107,43 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
                 vDotR += dr[l] * dv[l];
             }
             /*Predefining prefactors for computations*/
-            vDotR *= 3.0;
-            R = sqrt(sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2);
-            rInv = 1 / R;
-            rInv3 = sqr(rInv) * rInv;
-            rInv5 = rInv3 * sqr(rInv);
+            R2 = sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2;
+            rInv2 = 1 / R2; /*Important to divide first and then square root to avoid floating point related error*/
+            rInv = sqrt(rInv2);
+            rInv3 = rInv2 * rInv;
+            vDr_3rInv5 = 3.0 * vDotR * rInv3 * rInv2;
+            mk_rInv3 = m[k] * rInv3;
+            mk_vDr_3rInv5 = m[k] * vDr_3rInv5;
+
             for(int l = 0; l < 3; l++)
             {
-                a[index][l] += m[k] * dr[l] * rInv3;
-                j[index][l] += m[k] * dv[l] * rInv3 + vDotR * dr[k] * rInv5;
+                a[index][l] +=   mk_rInv3 * dr[l];
+                j[index][l] +=   mk_rInv3 * dv[l] - mk_vDr_3rInv5 * dr[l];
+
+                // printf("\tdr: %1.30e\n", dr[l]);
+                // printf("\tdv: %1.30e\n", dv[l]);
             }
             /*Technically some calculations are being done (but not counted!) twice, specifically between any particles
             noted on the array indii, couldn't think of a clever way to avoid this cleanly right now but could but an
-            array for some speed improvement*/
+            area for some speed improvement*/
         }
     }
 
 
+    // printf("\nNew A/J:\n");
+    // for(int i = 0; i < n; i++)
+    // {
+    //     printf("  Particle: %1.0d\n",i+1);
+    //     printf("\tA:\n");
+    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",a[i][0], a[i][1], a[i][2]);
+    //     printf("\tJ:\n");
+    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",j[i][0], j[i][1], j[i][2]);
+    // }
+
+
     /*Calculating corrections to predictions of degenerate particles and updating time*/
     double DT, dtI, dtI2, dtI3;
-    double dt3, dt4, dt5;
-    double inv_6 = 1.0 / 6.0;
-    double inv_24 = inv_6 * 0.25;
-    double inv_120 = inv_24 * 0.2;
+    double dt3, dt4;
     for(int i = 0; i < indexes; i++)
     {
         /*Calculating snap and crackle to use in corrections to predicted location of particle_index*/
@@ -250,7 +151,7 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
         DT = dt[index];/*Not given that all dt's are the same so need to calc prefactors for each particle*/
         dt3 = sqr(DT) * DT;
         dt4 = DT * dt3;
-        dt5 = DT * dt4;
+        // dt5 = DT * dt4;
         dtI = 1 / DT;
         dtI2 = sqr(dtI);
         dtI3 = dtI * dtI2;
@@ -261,13 +162,14 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
             c[index][k] = (12 * (a0[index][k] - a[index][k]) + 6*DT*(j0[index][k] + j[index][k]) ) * dtI3; /*Saving values to be used for timestep adjustment*/
 
             /*Adjusting predictions and casting values to actual array*/
-            x[index][k] = x_pred[index][k] + dt4 * inv_24 * s[index][k] + dt5 * inv_120 * c[index][k];
-            v[index][k] = v_pred[index][k] + dt3 * inv_6  * s[index][k] + dt4 * inv_24  * c[index][k];
+            x[index][k] = x_pred[index][k] + dt4*(k_24_inv * s[index][k] + DT * k_120_inv * c[index][k]);
+            v[index][k] = v_pred[index][k] + dt3 *(k_6_inv * s[index][k] + DT * k_24_inv  * c[index][k]);
         }
 
         /*Updating particle time*/
         t[index] += dt[index];
     }
+    
 
     /*Updating timesteps of degenerate particles*/
     if(fix_dt == 0) /*Input specifies that we want code to use variable timestep*/
@@ -325,14 +227,16 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
 jerk, snap and crackle values
 Inputs: number of particles, mass arry, position array, velocity array, acceleration array,
 jerk array, timestep array, time array, softening parameter, initial accuracy parameter eta_s, 
+minimum power allowed for timestep, maximum power allowed for timestep, last parameter fixes the dt
+step to the inputted parameter if anything aside from 0.0 is inputted
 */
 void initialize_parameters(int n, double m[], double x[][3], double v[][3], double a[][3],
                         double j[][3], double s[][3], double c[][3], double dt[], double t[], 
                         double eps2, double eta_s, int min_pow, int max_pow, double dt_fix)
 {   
     double dr[3], dv[3];
-    double vDotR, R, rInv, rInv3, rInv5, weight;
-
+    double vDotR, R2, rInv, rInv2, rInv3, rInv5, vDr_3rInv5;
+    double mi_rInv3, mk_rInv3, mi_vDr_3rInv5, mk_vDr_3rInv5;
     /*Initializing t, dt, a, j, s, and c values to 0*/
     for(int i = 0; i < n; i++)
     {
@@ -348,7 +252,7 @@ void initialize_parameters(int n, double m[], double x[][3], double v[][3], doub
     }
 
     /*Setting initial a and j values*/
-    for(int i = 0; i < n-1; i++)
+    for(int i = 0; i < n - 1; i++)
     {
         for(int k = i + 1; k < n; k++)
         {
@@ -361,24 +265,31 @@ void initialize_parameters(int n, double m[], double x[][3], double v[][3], doub
                 vDotR += dr[l] * dv[l];
             }
             /*Predefining prefactors for computations*/
-            vDotR *= 3.0;
-            R = sqrt(sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2);
-            rInv = 1 / R;
-            rInv3 = sqr(rInv) * rInv;
+            R2 = sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2;
+            rInv2 = 1 / R2; /*Important to divide first and then square root to avoid floating point related error*/
+            rInv = sqrt(rInv2);
+            rInv3 = rInv2 * rInv;
             rInv5 = rInv3 * sqr(rInv);
+            vDr_3rInv5 = 3.0 * vDotR * rInv5;
+            mi_rInv3 = m[i] * rInv3;
+            mk_rInv3 = m[k] * rInv3;
+            mi_vDr_3rInv5 = m[i] * vDr_3rInv5;
+            mk_vDr_3rInv5 = m[k] * vDr_3rInv5;
+
             for(int l = 0; l < 3; l++)
             {
-                weight = dr[l] * rInv3;
-                a[i][l] += m[k] * weight;
-                a[k][l] -= m[i] * weight;
+                
+                a[i][l] +=   mk_rInv3 * dr[l];
+                a[k][l] += - mi_rInv3 * dr[l];
 
-                weight = dv[l] * rInv3 + vDotR * dr[l] * rInv5;
-                j[i][l] += m[k] * weight;
-                j[k][l] -= m[i] * weight;
+                j[i][l] +=   mk_rInv3 * dv[l] - mk_vDr_3rInv5 * dr[l];
+                j[k][l] += - mi_rInv3 * dv[l] + mi_vDr_3rInv5 * dr[l];
+
             }
         }
     }
     
+
     /*Creating array to hold powers of 2 in specified range*/
     if((max_pow - min_pow + 1) > 32) /*Ensuring firs that we don't get an out of bound index*/
     {
@@ -436,6 +347,8 @@ void initialize_parameters(int n, double m[], double x[][3], double v[][3], doub
     return;
 }
 
+
+/*NOTE, WHEN USING FIXED TIMESTEPS, THIS FUNCTION IS UNNEEDED AND SEEMS TO CAUSE HIGHER ERRORS*/
 /*Finds specified time and outputs particle data at that point (right now just position)
 Inputs: output array, specified time, number of particles, position array, velocity array, 
 acceleration array, jerk array, snap array, crackle array, time array
@@ -446,7 +359,6 @@ void its_output(double x_pred[][3], double v_pred[][3], double output_time, int 
 {    
     /*Temporary variables to save computational time*/
     double dt1, dt2, dt3, dt4, dt5; 
-    double inv_3 = 1.0 / 3.0;
 
     /*Predicting positions / velocities of all particles at global time*/
     for(int i = 0; i < n; i++)
@@ -454,7 +366,7 @@ void its_output(double x_pred[][3], double v_pred[][3], double output_time, int 
         /*Predefining prefactors to reduce computations*/
         dt1 = output_time - t[i]; /* delta t */
         dt2 = dt1 * dt1 * 0.5; /* delta t^2 / 2 */
-        dt3 = dt1 * dt2 * inv_3; /* delta t^3 / 6 */
+        dt3 = dt1 * dt2 * k_3_inv; /* delta t^3 / 6 */
         dt4 = dt1 * dt3 * 0.25; /* delta t^4 / 24 */
         dt5 = dt1 * dt4 * 0.2; /* delta t^5 / 120 */
         for(int k = 0; k < 3; k++) /* j is already being used for jerk array */
