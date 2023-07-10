@@ -1,19 +1,54 @@
-/*hermite_integrator.c
+/****************************************************************************************************
+hermite_integrator.c
 Max Coy, 7/23
 4th order (PEC)^n Hermite Integrator for N body gravitational problem 
 Can be set to use variable timesets of integer powers of 2, or use a prespecified fixed timestep
-*/
+
+Functions:
+    its_hermite_integrator()                    Individual Time Step hermite integrator
+    initialize_parameteres()                    initializes variable arrays for simulation
+    its_output()                                predicts particle X and V values for given time t
+    calc_energy()                               Calculates system energy
+
+External Variables:
+    double  a[][]                   I/O         accelerations of particles
+    int     adj_particles[]         O           indexes of particles adjusted by integrator
+    int     adj_plength             O           length of adj_particles[]
+    double  c[][]                   I/O         crackle of particles
+    double  dt[]                    I/O         timesteps of particles
+    double  dt_fix                  I           fixed initial timestep
+    double  e                       O           total energy of the system
+    double  eps2                    I           gravitational softening parameter
+    double  eta                     I           timestep accuracy parameter
+    double  eta_s                   I           initial timestep accuracy parameter
+    double  fix_dt                  I           disables individual setting of timesteps
+    double  j[][]                   I/O         jerk of particles
+    double  m[]                     I/O         mass of particles
+    double  max_pow                 I           smallest initial timestep allowed (2^(-max_pow))
+    double  min_pow                 I           largest initial timestep allowed (2^(-min_pow))
+    int     n                       I           number of particles in system
+    int     order                   I           order of the (PEC)^n scheme
+    double  r_v                     O           virial ratio
+    double  s[][]                   I/O         snap of particles
+    double  t[]                     I/O         time of particles
+    double  t_min                   O           minimum value in t[]
+    double  v[][]                   I/O         velocity of particles
+    double  v_pred[][]              O           predicted velocity of particles
+    double  x[][]                   I/O         position of particles
+    double  x_pred[][]              O           predicted position of particles
+
+****************************************************************************************************/
 
 
 /*Individual timestep scheme hermite integrator
-Inputs: number of particles, mass arry, position array, velocity array, acceleration array,
+Inputs: number of particles, order of scheme, mass arry, position array, velocity array, acceleration array,
 jerk array, snap array, crackle array, timestep array, time array, softening parameter, 
 accuracy parameter eta, minimum time (for output), integer specifying whether or not to fix
 the timestep
 */
-void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], double a[][3],
+void its_hermite_integrator(int n, int order, double m[], double x[][3], double v[][3], double a[][3],
                         double j[][3], double s[][3], double c[][3], double dt[], double t[], 
-                        double eps2, double eta, double *t_min, int fix_dt)
+                        double eps2, double eta, double *t_min, int fix_dt, int adj_particles[], int *adj_plength)
 {
     /*Looping through particles to find particles with minimum t_i + dt_i*/
     double global_time; /*Variable to hold minimum time*/
@@ -37,6 +72,7 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
         }
     }
 
+
     /*Predicting positions / velocities of all particles at global time*/
     double x_pred [NMAX][3], v_pred [NMAX][3]; /*Arrays to hold temporary data*/
     double t_factor, t_factor2, t_factor3; /*Temporary variables to save computational time*/
@@ -46,130 +82,138 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
         t_factor = global_time - t[i]; /* delta t */
         t_factor2 = sqr(t_factor) * 0.5; /* delta t^2 / 2 */
         t_factor3 = t_factor * t_factor2 * k_3_inv; /* delta t^3 / 6 */
-
         for(int k = 0; k < 3; k++) /* j is already being used for jerk array */
         {
             x_pred[i][k] = t_factor3*j[i][k] + t_factor2*a[i][k] + t_factor*v[i][k] + x[i][k];
             v_pred[i][k] = t_factor2*j[i][k] + t_factor*a[i][k] + v[i][k];
         }
     }
-    // printf("\nPredicted X/V:\n");
-    // for(int i = 0; i < n; i++)
-    // {
-    //     printf("  Particle: %1.0d\n",i+1);
-    //     printf("\tX:\n");
-    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",x_pred[i][0], x_pred[i][1], x_pred[i][2]);
-    //     printf("\tV:\n");
-    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",v_pred[i][0], v_pred[i][1], v_pred[i][2]);
-    // }
-
     
-     /*Setting array values for acceleration and jerk for all degenerate particles to 0 and storing them in temporary variables*/
+     /*Storing array values for acceleration and jerk in temporary variables*/
     double a0[NMAX][3], j0[NMAX][3];
     int index;
     for(int i = 0; i < indexes; i++)
     {
-        index = indii[i]; /*Using temporary variable to avoid excessive calls to potentially large array*/
+        index = indii[i]; /*Using temporary variable to make my life simple*/
         for(int k = 0; k < 3; k++)
         {
             a0[index][k] = a[index][k];
             j0[index][k] = j[index][k];
-
-            a[index][k] = 0.0;
-            j[index][k] = 0.0;
         }
     }
     
-    /*Finding new acceleration and jerk for degenerate particles*/
-    double dr[3], dv[3];
-    double vDotR, R2, rInv, rInv2, rInv3, vDr_3rInv5;
-    double mk_rInv3, v5, mk_vDr_3rInv5;
-
-    for(int i = 0; i < indexes; i++)
-    {
-        index = indii[i]; /*Using temporary variable to avoid excessive calls to potentially large array*/
-        for(int k = 0; k < n; k++)
-        {
-            if(k == index)
-            {
-                continue; /*Skipping this iteration as it's looking at self-interaction*/
-            }
-            // else if(m[k] == 0.0)
-            // {
-            //     continue; /*skipping any test particles*/
-            // }
-            vDotR = 0.0;
-            /*Finding displacements*/
-            for(int l = 0; l < 3; l++)
-            {
-                dr[l] = x_pred[k][l] - x_pred[index][l];
-                dv[l] = v_pred[k][l] - v_pred[index][l];
-                vDotR += dr[l] * dv[l];
-            }
-            /*Predefining prefactors for computations*/
-            R2 = sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2;
-            rInv2 = 1 / R2; /*Important to divide first and then square root to avoid floating point related error*/
-            rInv = sqrt(rInv2);
-            rInv3 = rInv2 * rInv;
-            vDr_3rInv5 = 3.0 * vDotR * rInv3 * rInv2;
-            mk_rInv3 = m[k] * rInv3;
-            mk_vDr_3rInv5 = m[k] * vDr_3rInv5;
-
-            for(int l = 0; l < 3; l++)
-            {
-                a[index][l] +=   mk_rInv3 * dr[l];
-                j[index][l] +=   mk_rInv3 * dv[l] - mk_vDr_3rInv5 * dr[l];
-
-                // printf("\tdr: %1.30e\n", dr[l]);
-                // printf("\tdv: %1.30e\n", dv[l]);
-            }
-            /*Technically some calculations are being done (but not counted!) twice, specifically between any particles
-            noted on the array indii, couldn't think of a clever way to avoid this cleanly right now but could but an
-            area for some speed improvement*/
-        }
-    }
-
-
-    // printf("\nNew A/J:\n");
-    // for(int i = 0; i < n; i++)
-    // {
-    //     printf("  Particle: %1.0d\n",i+1);
-    //     printf("\tA:\n");
-    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",a[i][0], a[i][1], a[i][2]);
-    //     printf("\tJ:\n");
-    //     printf("\t\t%1.30e\n\t\t%1.30e\n\t\t%1.30e\n",j[i][0], j[i][1], j[i][2]);
-    // }
-
-
-    /*Calculating corrections to predictions of degenerate particles and updating time*/
-    double DT, dtI, dtI2, dtI3;
+    /**************************************Adding number of corrections specified by order***************************/
+    double DT, dtI, dtI2, dtI3; /*Will be using at end*/
     double dt3, dt4;
+    for(int o = 0; o < order; o++)
+    {
+        for(int i = 0; i < indexes; i++)/*Setting acceleration and jerk to 0*/
+        {
+            index = indii[i]; /*Using temporary variable to make my life simple*/
+            for(int k = 0; k < 3; k++)
+            {
+                a[index][k] = 0.0;
+                j[index][k] = 0.0; /*Need to do this inside of corrections loop*/
+            }
+        }
+        
+        /*Finding new acceleration and jerk for degenerate particles*/
+        double dr[3], dv[3];
+        double vDotR, R2, rInv, rInv2, rInv3, vDr_3rInv5;
+        double mk_rInv3, v5, mk_vDr_3rInv5;
+
+        for(int i = 0; i < indexes; i++)
+        {
+            index = indii[i]; /*Using temporary variable to avoid excessive calls to potentially large array*/
+            for(int k = 0; k < n; k++)
+            {
+                if(k == index)
+                {
+                    continue; /*Skipping this iteration as it's looking at self-interaction*/
+                }
+                else if(m[k] == 0.0)
+                {
+                    continue; /*skipping any test particles*/
+                }
+                vDotR = 0.0;
+                /*Finding displacements*/
+                for(int l = 0; l < 3; l++)
+                {
+                    dr[l] = x_pred[k][l] - x_pred[index][l];
+                    dv[l] = v_pred[k][l] - v_pred[index][l];
+                    vDotR += dr[l] * dv[l];
+                }
+                /*Predefining prefactors for computations*/
+                R2 = sqr(dr[0]) + sqr(dr[1]) + sqr(dr[2]) + eps2;
+                rInv2 = 1 / R2; /*Important to divide first and then square root to avoid floating point related error*/
+                rInv = sqrt(rInv2);
+                rInv3 = rInv2 * rInv;
+                vDr_3rInv5 = 3.0 * vDotR * rInv3 * rInv2;
+                mk_rInv3 = m[k] * rInv3;
+                mk_vDr_3rInv5 = m[k] * vDr_3rInv5;
+
+                for(int l = 0; l < 3; l++)
+                {
+                    a[index][l] +=   mk_rInv3 * dr[l];
+                    j[index][l] +=   mk_rInv3 * dv[l] - mk_vDr_3rInv5 * dr[l];
+
+                }
+                /*Technically some calculations are being done (but not counted!) twice, specifically between any particles
+                noted on the array indii, couldn't think of a clever way to avoid this cleanly right now but could but an
+                area for some speed improvement*/
+            }
+        }
+
+        /*Calculating corrections to predictions of degenerate particles and updating time*/
+        for(int i = 0; i < indexes; i++)
+        {
+            /*Calculating snap and crackle to use in corrections to predicted location of particle_index*/
+            index = indii[i]; /*Using temporary variable to make my life easier*/
+            DT = dt[index];/*Not given that all dt's are the same so need to calc prefactors for each particle*/
+            dt3 = sqr(DT) * DT;
+            dt4 = DT * dt3;
+            dtI = 1 / DT;
+            dtI2 = sqr(dtI);
+            dtI3 = dtI * dtI2;
+
+            t_factor = global_time - t[index]; /* delta t */
+            t_factor2 = sqr(t_factor) * 0.5; /* delta t^2 / 2 */
+            t_factor3 = t_factor * t_factor2 * k_3_inv; /* delta t^3 / 6 */
+
+            for(int k = 0; k < 3; k++)
+            {
+                /*Computing higher order derivatives*/
+                s[index][k] = (-6 * (a0[index][k] - a[index][k]) - DT*(4 * j0[index][k] + 2*j[index][k]) ) * dtI2; /*Saving values to be used for timestep adjustment*/
+                c[index][k] = (12 * (a0[index][k] - a[index][k]) + 6*DT*(j0[index][k] + j[index][k]) ) * dtI3; /*Saving values to be used for timestep adjustment*/
+
+                /*Adjusting predictions*/
+
+                x_pred[index][k] = x[index][k] + DT * (v[index][k] + DT * (0.5 * a0[index][k] + DT * (k_6_inv * j0[index][k] + 
+                                    DT * (k_24_inv * s[index][k] + DT * k_120_inv * c[index][k] ) ) ) );
+                v_pred[index][k] = v[index][k] + DT * (a0[index][k] + DT * (0.5 * j0[index][k] + DT * (k_6_inv * s[index][k] + 
+                                    DT * k_24_inv * c[index][k] ) ) );
+            }
+
+
+        }
+
+    }/***********************************************************************************************************/
+
+    /*****************************Casting predictions into position and velocity arrays*******************************/
     for(int i = 0; i < indexes; i++)
     {
-        /*Calculating snap and crackle to use in corrections to predicted location of particle_index*/
-        index = indii[i]; /*Using temporary variable to avoid excessive calls to potentially large array*/
-        DT = dt[index];/*Not given that all dt's are the same so need to calc prefactors for each particle*/
-        dt3 = sqr(DT) * DT;
-        dt4 = DT * dt3;
-        // dt5 = DT * dt4;
-        dtI = 1 / DT;
-        dtI2 = sqr(dtI);
-        dtI3 = dtI * dtI2;
+        index = indii[i];
         for(int k = 0; k < 3; k++)
         {
-            /*Computing higher order derivatives*/
-            s[index][k] = (-6 * (a0[index][k] - a[index][k]) - DT*(4 * j0[index][k] + 2*j[index][k]) ) * dtI2; /*Saving values to be used for timestep adjustment*/
-            c[index][k] = (12 * (a0[index][k] - a[index][k]) + 6*DT*(j0[index][k] + j[index][k]) ) * dtI3; /*Saving values to be used for timestep adjustment*/
-
-            /*Adjusting predictions and casting values to actual array*/
-            x[index][k] = x_pred[index][k] + dt4*(k_24_inv * s[index][k] + DT * k_120_inv * c[index][k]);
-            v[index][k] = v_pred[index][k] + dt3 *(k_6_inv * s[index][k] + DT * k_24_inv  * c[index][k]);
+            x[index][k] = x_pred[index][k];
+            v[index][k] = v_pred[index][k];
         }
-
-        /*Updating particle time*/
-        t[index] += dt[index];
     }
-    
+    /*Updating particle times*/
+    for(int i = 0; i < indexes; i++)
+    {
+        t[indii[i]] += dt[indii[i]];
+    }
 
     /*Updating timesteps of degenerate particles*/
     if(fix_dt == 0) /*Input specifies that we want code to use variable timestep*/
@@ -220,6 +264,11 @@ void its_hermite_integrator(int n, double m[], double x[][3], double v[][3], dou
     //    *t_min = (*t_min * (double) (*t_min <= t[i])) + (t[i] * (double) (*t_min > t[i]));
     }
 
+    for(int i = 0; i < indexes; i++)
+    {
+        adj_particles[i] = indii[i];
+    }
+    *adj_plength = indexes;
     return;
 }
 
@@ -344,6 +393,7 @@ void initialize_parameters(int n, double m[], double x[][3], double v[][3], doub
             dt[i] = dt_fix;
         }
     }
+
     return;
 }
 
