@@ -10,10 +10,10 @@ Functions:
     print_pt()                      Specialized print function for use with hermite_integrator.c
     print_particles()               Specialized print function for use with hermite_integrator.c
 
-    min_arr()                       returns minimum value in 1-D array
-    min_index()                     returns index of minimum value in 1-D array
-    max_arr()                       returns maximum value in 1-D array
-    max_index()                     returns index of maximum value in 1-D array
+    min_arr()                       returns minimum value in 1-D double array
+    min_index()                     returns index of minimum value in 1-D double array
+    max_arr()                       returns maximum value in 1-D double array
+    max_index()                     returns index of maximum value in 1-D double array
 
     shift_arr_indicies2()           Shift index location of elements in 2-D array
     shift_arr_values2()             Shift the elements of a 2-D array by fixed amount
@@ -30,6 +30,8 @@ Functions:
 
     cast_iarr_darr()                Convert 1-D int array to double array
     cast_darr_iarr()                Convert 1-D double array to int array
+    set_darr()                      Set all values in double array
+    set_iarr()                      Set all values in int array
 
 *****************************************************************************************/
 
@@ -189,7 +191,7 @@ void print_particles(int n, double x[][DIM], double v[][DIM], double a[][DIM], d
 }
 
 
-/*Returns minimum value of 1D array input given n its length*/
+/*Returns minimum value of 1D double array input given n its length*/
 double min_arr(int n, double input[])
 {
     double min = input[0];
@@ -200,7 +202,7 @@ double min_arr(int n, double input[])
     return min;
 }
 
-/*Returns index of minimum value of 1D array input given n its length*/
+/*Returns index of minimum value of 1D double array input given n its length*/
 int min_index(int n, double input[])
 {
     double min;
@@ -218,7 +220,7 @@ int min_index(int n, double input[])
     return index;
 }
 
-/*Returns maximum value of 1D array input given n its length*/
+/*Returns maximum value of 1D double array input given n its length*/
 double max_arr(int n, double input[])
 {
     double max = input[0];
@@ -229,7 +231,7 @@ double max_arr(int n, double input[])
     return max;
 }
 
-/*Returns index of minimum value of 1D array input given n its length*/
+/*Returns index of minimum value of 1D double array input given n its length*/
 int max_index(int n, double input[])
 {
     double max;
@@ -247,8 +249,30 @@ int max_index(int n, double input[])
     return index;
 }
 
+/*Adjust position of informations in 1D array
+Inputs: number of particles, Current offset, New offset, array to adjust, number of dimensions
+Warning: poor indexing can lead to data being overwritten
+*/
+void shift_arr_indicies(int n, int current_offset, int new_offset, double arr[])
+{
+    /*Ensuring there is space in the array for new particles*/
+    if(n + new_offset > NMAX)
+    {
+        printf("\n\nWarning, attempting to index variables out of array bounds, terminating call\n\n");
+        return;
+    }
+    /*Adjusting information*/
+    for(int i = 0; i < n; i++)
+    {           
+        arr[i+new_offset] = arr[i+current_offset];
+        arr[i+current_offset] = 0;
+    }
+    return;
+}
+
 /*Adjust position of informations in 2D array
 Inputs: number of particles, Current offset, New offset, array to adjust, number of dimensions
+Warning: poor indexing can lead to data being overwritten
 */
 void shift_arr_indicies2(int n, int current_offset, int new_offset, double arr[][DIM], int dim)
 {
@@ -256,10 +280,6 @@ void shift_arr_indicies2(int n, int current_offset, int new_offset, double arr[]
     if(n + new_offset > NMAX)
     {
         printf("\n\nWarning, attempting to index variables out of array bounds, terminating call\n\n");
-        return;
-    }else if(n + current_offset < new_offset)
-    {
-        printf("\n\nWarning, new offset is not large enough to prevent writing over data, terminating call\n\n");
         return;
     }
     /*Adjusting information*/
@@ -418,6 +438,26 @@ void cast_darr_iarr(int n, double arr1[], int arr2[])
     for(int i = 0; i < n; i++)
     {
         arr2[i] = (int) arr1[i];
+    }
+    return;
+}
+
+/*Set every value in double array*/
+void set_darr(int n, double arr[], double val)
+{
+    for(int i = 0; i < n; i++)
+    {
+        arr[i] = val;
+    }
+    return;
+}
+
+/*Set every value in int array*/
+void set_iarr(int n, int arr[], int val)
+{
+    for(int i = 0; i < n; i++)
+    {
+        arr[i] = val;
     }
     return;
 }
