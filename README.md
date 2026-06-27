@@ -1,26 +1,22 @@
-# Physics Simulations
+# Computational Astrophysics Simulations
 
-This repository contains a collection of numerical physics simulations focused on gravitational N-body systems and orbital dynamics. The code spans coursework projects and research work completed during my internship at the Center for Computational Astrophysics (CfCA).
+This repository contains gravitational N-body simulation projects developed during a computational astrophysics internship, along with one coursework project in numerical methods.
 
-All simulations implement custom numerical integrators in C or Python, primarily using leapfrog and Hermite integration schemes.
+## Internship Projects (CfCA)
 
-## Projects
-### Collisionless Cold Collapse (C)
+C implementations of gravitational N-body systems developed during a computational astrophysics internship:
 
-Simulation of the collapse of a collisionless isothermal particle cloud under gravity. Implements a leapfrog integrator for long-term stability in Hamiltonian systems.
+- Cold collapse of collisionless particle systems using leapfrog integration
+- Galaxy collision simulations using Plummer sphere initial conditions
+- Kepler two-body system used to test a 4th-order Hermite integrator with adaptive timestepping
 
-### Galaxy Collision (C)
+These projects focus on numerical stability, long-term orbital dynamics, and gravitational N-body integration methods.
 
-N-body simulation of colliding Plummer sphere galaxies using a leapfrog integration scheme. Includes utilities for initialization, force calculation, and time evolution of particle systems.
+## Coursework Project
+- Python-based N-body force simulation using a 4th-order Runge-Kutta integrator
+- Generalized force-law framework supporting arbitrary particle interactions
+- Implemented as a Jupyter notebook with visualization and animation tools
 
-### Kepler Two-Body / Hermite Integrator Validation (C)
+## Summary
 
-Two-body orbital simulation used to validate a predictor-corrector Hermite integrator (P(EC)^N scheme). Includes orbital element conversion utilities and error analysis for long-term orbital stability.
-
-### N-Body Force Simulator (Python / Jupyter)
-
-Capstone coursework project implementing a generalized N-body force simulation in Python using a 4th-order Runge-Kutta integrator. Includes a custom particle system and visualization of multi-body gravitational dynamics.
-
-## Notes
-
-These projects were developed independently as part of coursework and research. While implemented separately, they all explore numerical integration methods for gravitational systems and orbital dynamics.
+This repository focuses on numerical integration methods for gravitational N-body systems, including leapfrog, Runge-Kutta, and Hermite schemes applied across different simulation settings.
